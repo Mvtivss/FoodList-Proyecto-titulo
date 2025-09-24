@@ -2,7 +2,6 @@ import 'package:flutter_application_1/providers/auth_provider.dart';
 import 'package:flutter_application_1/screens/home_screen.dart';
 import 'package:flutter_application_1/screens/login_screen.dart';
 import 'package:flutter_application_1/screens/profile_screen.dart';
-//import 'package:app_foodlist/screens/shopping_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
