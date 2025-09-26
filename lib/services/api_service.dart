@@ -128,4 +128,83 @@ class ApiService {
     }
     return null;
   }
+  // Actualizar usuario
+static Future<Map<String, dynamic>> updateUser({
+  required String userId,
+  String? username,
+  String? email,
+  String? fullName,
+}) async {
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('access_token');
+
+    final response = await http.put(
+      Uri.parse('$baseUrl/auth/update/$userId'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: jsonEncode({
+        'username': username,
+        'email': email,
+        'full_name': fullName,
+      }),
+    );
+
+    if (response.statusCode == 200) {
+      return {
+        'success': true,
+        'data': jsonDecode(response.body),
+      };
+    } else {
+      final error = jsonDecode(response.body);
+      return {
+        'success': false,
+        'error': error['detail'] ?? 'Error desconocido',
+      };
+    }
+  } catch (e) {
+    return {
+      'success': false,
+      'error': 'Error de conexión: $e',
+    };
+  }
 }
+
+// Eliminar usuario
+static Future<Map<String, dynamic>> deleteUser(String userId) async {
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('access_token');
+
+    final response = await http.delete(
+      Uri.parse('$baseUrl/auth/delete/$userId'),
+      headers: {
+        'Authorization': 'Bearer $token',
+      },
+    );
+
+    if (response.statusCode == 200) {
+      await prefs.clear(); // Limpia sesión si eliminas la cuenta
+      return {
+        'success': true,
+        'data': jsonDecode(response.body),
+      };
+    } else {
+      final error = jsonDecode(response.body);
+      return {
+        'success': false,
+        'error': error['detail'] ?? 'Error desconocido',
+      };
+    }
+  } catch (e) {
+    return {
+      'success': false,
+      'error': 'Error de conexión: $e',
+    };
+  }
+}
+}
+
+
