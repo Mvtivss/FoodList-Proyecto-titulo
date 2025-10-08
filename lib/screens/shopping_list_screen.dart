@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+/*import 'package:flutter/material.dart';
 import 'package:flutter_application_1/domain/entities/kitchen_ingredient.dart';
 import 'package:flutter_application_1/widgets/shopping_list/shopping_stats_widget.dart';
 import 'package:flutter_application_1/widgets/shopping_list/search_ingredient_bar.dart';
@@ -30,8 +30,7 @@ class ShoppingListScreenState extends State<ShoppingListScreen> {
 
   void _initializeShoppingList() {
     // Crear una instancia para acceder a los métodos
-    KitchenIngredient kitchenHelper = KitchenIngredient(name: '', quantity: '', location: '');
-    List<KitchenIngredient> allIngredients = kitchenHelper.getAvailableIngredients();
+    List<KitchenIngredient> allIngredients = KitchenIngredient.getAvailableIngredients();
     
     // Filtrar ingredientes que necesitamos comprar (agotados, vencidos o por vencer)
     shoppingList = allIngredients.where((ingredient) =>
@@ -155,6 +154,28 @@ class ShoppingListScreenState extends State<ShoppingListScreen> {
       label: Text('Ir a comprar ($selectedCount)'),
       icon: const Icon(Icons.shopping_cart),
       backgroundColor: Colors.green,
+    );
+  }
+}*/
+
+
+import 'package:flutter/material.dart';
+
+class ShoppingListScreen extends StatelessWidget {
+  const ShoppingListScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text("Pantalla Básica"),
+      ),
+      body: const Center(
+        child: Text(
+          "Hola",
+          style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+        ),
+      ),
     );
   }
 }

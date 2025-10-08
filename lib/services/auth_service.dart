@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:flutter_application_1/domain/entities/user_model.dart';
+import 'package:flutter_application_1/models/user_model.dart';
 
 class AuthService {
   static const String userKey = 'user';

@@ -1,6 +1,7 @@
-// ignore_for_file: deprecated_member_use
-
 import 'package:flutter/material.dart';
+import '../services/api_service.dart';
+import '../services/notification_service.dart';
+import '../models/meal_plan.dart';
 
 class ScheduleScreen extends StatefulWidget {
   const ScheduleScreen({super.key});
@@ -9,17 +10,26 @@ class ScheduleScreen extends StatefulWidget {
   State<ScheduleScreen> createState() => _ScheduleScreenState();
 }
 
-class _ScheduleScreenState extends State<ScheduleScreen> with TickerProviderStateMixin {
+class _ScheduleScreenState extends State<ScheduleScreen>
+    with TickerProviderStateMixin {
   late TabController _tabController;
-  int selectedDay = DateTime.now().weekday - 1; // 0 = Lunes
+  int selectedDay = DateTime.now().weekday - 1; // 0 = lunes
 
   final List<String> days = [
-    'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'
+    'Lunes',
+    'Martes',
+    'Miércoles',
+    'Jueves',
+    'Viernes',
+    'Sábado',
+    'Domingo'
   ];
 
   final List<String> mealTypes = ['Desayuno', 'Almuerzo', 'Cena', 'Snack'];
 
   Map<String, Map<String, MealPlan?>> weeklySchedule = {};
+
+  String? userId;
 
   @override
   void initState() {
@@ -27,6 +37,8 @@ class _ScheduleScreenState extends State<ScheduleScreen> with TickerProviderStat
     _tabController = TabController(length: 7, vsync: this);
     _tabController.index = selectedDay;
     _initializeSchedule();
+    _loadUserAndSchedule();
+    NotificationService().initialize();
   }
 
   @override
@@ -42,47 +54,56 @@ class _ScheduleScreenState extends State<ScheduleScreen> with TickerProviderStat
         weeklySchedule[day]![mealType] = null;
       }
     }
+  }
 
-    // Agregar algunos ejemplos
-    weeklySchedule['Lunes']!['Desayuno'] = MealPlan(
-      name: 'Tostadas con Jamón y Queso',
-      time: '08:00',
-      ingredients: ['Pan', 'Jamón', 'Queso', 'Mantequilla'],
-      isCompleted: false,
-    );
-    weeklySchedule['Lunes']!['Almuerzo'] = MealPlan(
-      name: 'Arroz con Pollo',
-      time: '13:00',
-      ingredients: ['Arroz', 'Tuto de Pollo', 'Cebolla', 'Ajo'],
-      isCompleted: true,
-    );
-    weeklySchedule['Martes']!['Desayuno'] = MealPlan(
-      name: 'Café con Leche',
-      time: '08:30',
-      ingredients: ['Café', 'Leche'],
-      isCompleted: false,
-    );
+  Future<void> _loadUserAndSchedule() async {
+    final userData = await ApiService.getUserData();
+    if (userData == null) return;
+
+    userId = userData['id'];
+    if (userId != null) {
+      await _fetchWeeklySchedule();
+    }
+  }
+
+  Future<void> _fetchWeeklySchedule() async {
+    if (userId == null) return;
+    try {
+      final data = await ApiService.fetchWeeklySchedule(userId!);
+      setState(() {
+        for (String day in days) {
+          weeklySchedule[day] = {};
+          final dayIndex = days.indexOf(day);
+          final dayData = (data is List && dayIndex >= 0 && dayIndex < data.length)
+              ? data[dayIndex] ?? {}
+              : (data is Map<String, dynamic> && (data as Map<String, dynamic>).containsKey(day) ? (data as Map<String, dynamic>)[day] ?? {} : {});
+          final Map<String, dynamic> dayDataMap = dayData is Map<String, dynamic>
+              ? dayData
+              : <String, dynamic>{};
+          for (String mealType in mealTypes) {
+            if (dayDataMap[mealType] != null) {
+              weeklySchedule[day]![mealType] =
+                  MealPlan.fromJson(dayDataMap[mealType]);
+            } else {
+              weeklySchedule[day]![mealType] = null;
+            }
+          }
+        }
+      });
+    } catch (e) {
+      print("Error cargando schedule: $e");
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(bottom: Radius.circular(24)),
-        ),
-        title: const Text(
-          'FOODLIST - Horario de Comidas',
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-        ),
+        title: const Text('FOODLIST - Horario de Comidas'),
         backgroundColor: const Color.fromARGB(255, 9, 77, 133),
-        iconTheme: const IconThemeData(color: Colors.white),
         bottom: TabBar(
           controller: _tabController,
           isScrollable: true,
-          indicatorColor: Colors.white,
-          labelColor: Colors.white,
-          unselectedLabelColor: Colors.white70,
           tabs: days.map((day) => Tab(text: day)).toList(),
         ),
       ),
@@ -93,7 +114,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> with TickerProviderStat
       floatingActionButton: FloatingActionButton(
         onPressed: _addMealPlan,
         backgroundColor: const Color.fromARGB(255, 9, 77, 133),
-        child: const Icon(Icons.add, color: Colors.white),
+        child: const Icon(Icons.add),
       ),
     );
   }
@@ -104,11 +125,8 @@ class _ScheduleScreenState extends State<ScheduleScreen> with TickerProviderStat
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Resumen del día
           _buildDaySummary(day),
-          const SizedBox(height: 20),
-          
-          // Planificación por tipo de comida
+          const SizedBox(height: 16),
           ...mealTypes.map((mealType) => _buildMealSection(day, mealType)),
         ],
       ),
@@ -116,12 +134,12 @@ class _ScheduleScreenState extends State<ScheduleScreen> with TickerProviderStat
   }
 
   Widget _buildDaySummary(String day) {
-    Map<String, MealPlan?> dayPlan = weeklySchedule[day]!;
-    int totalMeals = dayPlan.values.where((meal) => meal != null).length;
-    int completedMeals = dayPlan.values.where((meal) => meal != null && meal.isCompleted).length;
-    
+    final dayPlan = weeklySchedule[day]!;
+    final totalMeals = dayPlan.values.where((m) => m != null).length;
+    final completedMeals =
+        dayPlan.values.where((m) => m != null && m!.isCompleted).length;
+
     return Card(
-      elevation: 4,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: Container(
         padding: const EdgeInsets.all(16),
@@ -141,42 +159,20 @@ class _ScheduleScreenState extends State<ScheduleScreen> with TickerProviderStat
                 children: [
                   Text(
                     'Planificación para $day',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                    ),
+                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18),
                   ),
-                  const SizedBox(height: 8),
-                  Text(
-                    '$totalMeals comidas planificadas',
-                    style: const TextStyle(color: Colors.white70, fontSize: 14),
-                  ),
-                  Text(
-                    '$completedMeals completadas',
-                    style: const TextStyle(color: Colors.white70, fontSize: 14),
-                  ),
+                  Text('$totalMeals comidas planificadas', style: const TextStyle(color: Colors.white70)),
+                  Text('$completedMeals completadas', style: const TextStyle(color: Colors.white70)),
                 ],
               ),
             ),
-            Container(
-              width: 60,
-              height: 60,
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.2),
-                shape: BoxShape.circle,
+            CircleAvatar(
+              backgroundColor: Colors.white24,
+              child: Text(
+                '$totalMeals',
+                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
               ),
-              child: Center(
-                child: Text(
-                  '$totalMeals',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-            ),
+            )
           ],
         ),
       ),
@@ -184,61 +180,31 @@ class _ScheduleScreenState extends State<ScheduleScreen> with TickerProviderStat
   }
 
   Widget _buildMealSection(String day, String mealType) {
-    MealPlan? meal = weeklySchedule[day]![mealType];
-    
+    final meal = weeklySchedule[day]![mealType];
+
     return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      margin: const EdgeInsets.symmetric(vertical: 8),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Header del tipo de comida
           Container(
             padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: _getMealTypeColor(mealType).withOpacity(0.1),
-              borderRadius: const BorderRadius.only(
-                topLeft: Radius.circular(12),
-                topRight: Radius.circular(12),
-              ),
-            ),
+            color: _getMealTypeColor(mealType).withOpacity(0.1),
             child: Row(
               children: [
-                Icon(
-                  _getMealTypeIcon(mealType),
-                  color: _getMealTypeColor(mealType),
-                  size: 20,
-                ),
+                Icon(_getMealTypeIcon(mealType), color: _getMealTypeColor(mealType)),
                 const SizedBox(width: 8),
-                Text(
-                  mealType,
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: _getMealTypeColor(mealType),
-                    fontSize: 16,
-                  ),
-                ),
+                Text(mealType, style: TextStyle(color: _getMealTypeColor(mealType), fontWeight: FontWeight.bold)),
                 const Spacer(),
-                if (meal != null)
-                  Text(
-                    meal.time,
-                    style: TextStyle(
-                      color: _getMealTypeColor(mealType),
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
+                if (meal != null) Text(meal.time, style: TextStyle(color: _getMealTypeColor(mealType))),
               ],
             ),
           ),
-          
-          // Contenido de la comida
           Padding(
             padding: const EdgeInsets.all(12),
-            child: meal == null 
-              ? _buildEmptyMeal(day, mealType)
-              : _buildPlannedMeal(day, mealType, meal),
+            child: meal == null
+                ? _buildEmptyMeal(day, mealType)
+                : _buildPlannedMeal(day, mealType, meal),
           ),
         ],
       ),
@@ -250,41 +216,30 @@ class _ScheduleScreenState extends State<ScheduleScreen> with TickerProviderStat
       children: [
         Container(
           width: double.infinity,
-          padding: const EdgeInsets.all(20),
+          padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
             color: Colors.grey[100],
+            border: Border.all(color: Colors.grey.shade300),
             borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: Colors.grey[300]!, style: BorderStyle.solid),
           ),
           child: Column(
             children: [
-              Icon(
-                Icons.add_circle_outline,
-                color: Colors.grey[400],
-                size: 40,
-              ),
+              Icon(Icons.add_circle_outline, size: 40, color: Colors.grey[400]),
               const SizedBox(height: 8),
-              Text(
-                'No hay comida planificada',
-                style: TextStyle(
-                  color: Colors.grey[600],
-                  fontSize: 14,
-                ),
-              ),
+              const Text('No hay comida planificada', style: TextStyle(color: Colors.grey)),
             ],
           ),
         ),
         const SizedBox(height: 8),
         ElevatedButton.icon(
           onPressed: () => _addMealForSlot(day, mealType),
-          icon: const Icon(Icons.add, size: 16),
+          icon: const Icon(Icons.add),
           label: const Text('Agregar Comida'),
           style: ElevatedButton.styleFrom(
             backgroundColor: _getMealTypeColor(mealType),
             foregroundColor: Colors.white,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
           ),
-        ),
+        )
       ],
     );
   }
@@ -299,80 +254,36 @@ class _ScheduleScreenState extends State<ScheduleScreen> with TickerProviderStat
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    meal.name,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    '${meal.ingredients.length} ingredientes',
-                    style: TextStyle(
-                      color: Colors.grey[600],
-                      fontSize: 12,
-                    ),
-                  ),
+                  Text(meal.name, style: const TextStyle(fontWeight: FontWeight.bold)),
+                  Text('${meal.ingredients.length} ingredientes', style: const TextStyle(fontSize: 12, color: Colors.grey)),
                 ],
               ),
             ),
-            Row(
-              children: [
-                Checkbox(
-                  value: meal.isCompleted,
-                  onChanged: (value) => _toggleMealCompletion(day, mealType),
-                  activeColor: Colors.green,
-                ),
-                Text(
-                  meal.isCompleted ? 'Completado' : 'Pendiente',
-                  style: TextStyle(
-                    color: meal.isCompleted ? Colors.green : Colors.orange,
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ],
+            Checkbox(
+              value: meal.isCompleted,
+              onChanged: (val) => _toggleMealCompletion(day, mealType),
+              activeColor: Colors.green,
             ),
           ],
         ),
-        
         const SizedBox(height: 8),
-        
-        // Ingredientes
         Wrap(
           spacing: 4,
           runSpacing: 4,
-          children: meal.ingredients.map((ingredient) => Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            decoration: BoxDecoration(
-              color: _getMealTypeColor(mealType).withOpacity(0.1),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Text(
-              ingredient,
-              style: TextStyle(
-                fontSize: 10,
-                color: _getMealTypeColor(mealType),
-              ),
-            ),
-          )).toList(),
+          children: meal.ingredients
+              .map((ing) => Chip(label: Text(ing, style: const TextStyle(fontSize: 10))))
+              .toList(),
         ),
-        
         const SizedBox(height: 12),
-        
-        // Botones de acción
         Row(
           children: [
             Expanded(
               child: OutlinedButton.icon(
                 onPressed: () => _editMeal(day, mealType, meal),
-                icon: const Icon(Icons.edit, size: 16),
+                icon: const Icon(Icons.edit),
                 label: const Text('Editar'),
                 style: OutlinedButton.styleFrom(
                   foregroundColor: _getMealTypeColor(mealType),
-                  side: BorderSide(color: _getMealTypeColor(mealType)),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                 ),
               ),
             ),
@@ -380,12 +291,10 @@ class _ScheduleScreenState extends State<ScheduleScreen> with TickerProviderStat
             Expanded(
               child: ElevatedButton.icon(
                 onPressed: () => _startCooking(meal),
-                icon: const Icon(Icons.restaurant, size: 16),
+                icon: const Icon(Icons.restaurant),
                 label: const Text('Cocinar'),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: _getMealTypeColor(mealType),
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                 ),
               ),
             ),
@@ -426,312 +335,171 @@ class _ScheduleScreenState extends State<ScheduleScreen> with TickerProviderStat
   }
 
   void _addMealPlan() {
-    String currentDay = days[_tabController.index];
-    _showMealPlanDialog(currentDay, null, null);
+    final day = days[_tabController.index];
+    _showMealDialog(day, null, null);
   }
 
   void _addMealForSlot(String day, String mealType) {
-    _showMealPlanDialog(day, mealType, null);
+    _showMealDialog(day, mealType, null);
   }
 
   void _editMeal(String day, String mealType, MealPlan meal) {
-    _showMealPlanDialog(day, mealType, meal);
+    _showMealDialog(day, mealType, meal);
   }
 
-  void _showMealPlanDialog(String day, String? mealType, MealPlan? existingMeal) {
+  Future<void> _showMealDialog(String day, String? mealType, MealPlan? existingMeal) async {
     final nameController = TextEditingController(text: existingMeal?.name ?? '');
     final timeController = TextEditingController(text: existingMeal?.time ?? '');
     String selectedMealType = mealType ?? mealTypes.first;
     List<String> ingredients = List.from(existingMeal?.ingredients ?? []);
 
-    showDialog(
+    await showDialog(
       context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: Text(existingMeal == null ? 'Agregar Comida' : 'Editar Comida'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: nameController,
-                  decoration: const InputDecoration(
-                    labelText: 'Nombre de la comida',
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                
-                DropdownButtonFormField<String>(
-                  value: selectedMealType,
-                  decoration: const InputDecoration(
-                    labelText: 'Tipo de comida',
-                    border: OutlineInputBorder(),
-                  ),
-                  items: mealTypes.map((type) => DropdownMenuItem(
-                    value: type,
-                    child: Text(type),
-                  )).toList(),
-                  onChanged: mealType == null ? (value) {
-                    setDialogState(() {
-                      selectedMealType = value!;
-                    });
-                  } : null,
-                ),
-                const SizedBox(height: 12),
-                
-                TextField(
-                  controller: timeController,
-                  decoration: const InputDecoration(
-                    labelText: 'Hora (HH:MM)',
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                
-                // Lista de ingredientes
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    border: Border.all(color: Colors.grey),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          const Text('Ingredientes:', style: TextStyle(fontWeight: FontWeight.bold)),
-                          const Spacer(),
-                          IconButton(
-                            onPressed: () => _showAddIngredientDialog(setDialogState, ingredients),
-                            icon: const Icon(Icons.add, size: 20),
-                          ),
-                        ],
-                      ),
-                      if (ingredients.isEmpty)
-                        const Text('No hay ingredientes agregados', style: TextStyle(color: Colors.grey))
-                      else
-                        Wrap(
-                          spacing: 4,
-                          runSpacing: 4,
-                          children: ingredients.map((ingredient) => Chip(
-                            label: Text(ingredient, style: const TextStyle(fontSize: 10)),
-                            deleteIcon: const Icon(Icons.close, size: 16),
-                            onDeleted: () {
-                              setDialogState(() {
-                                ingredients.remove(ingredient);
-                              });
-                            },
-                          )).toList(),
-                        ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            if (existingMeal != null)
-              TextButton(
-                onPressed: () {
-                  _deleteMeal(day, selectedMealType);
-                  Navigator.pop(context);
-                },
-                child: const Text('Eliminar', style: TextStyle(color: Colors.red)),
-              ),
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancelar'),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                if (nameController.text.isNotEmpty && timeController.text.isNotEmpty) {
-                  _saveMeal(day, selectedMealType, nameController.text, timeController.text, ingredients);
-                  Navigator.pop(context);
-                }
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color.fromARGB(255, 9, 77, 133),
-                foregroundColor: Colors.white,
-              ),
-              child: Text(existingMeal == null ? 'Agregar' : 'Guardar'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _showAddIngredientDialog(StateSetter setDialogState, List<String> ingredients) {
-    final ingredientController = TextEditingController();
-    
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Agregar Ingrediente'),
-        content: TextField(
-          controller: ingredientController,
-          decoration: const InputDecoration(
-            labelText: 'Nombre del ingrediente',
-            border: OutlineInputBorder(),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancelar'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              if (ingredientController.text.isNotEmpty) {
-                setDialogState(() {
-                  ingredients.add(ingredientController.text);
-                });
-                Navigator.pop(context);
-              }
-            },
-            child: const Text('Agregar'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _saveMeal(String day, String mealType, String name, String time, List<String> ingredients) {
-    setState(() {
-      weeklySchedule[day]![mealType] = MealPlan(
-        name: name,
-        time: time,
-        ingredients: ingredients,
-        isCompleted: false,
-      );
-    });
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Comida guardada para $day'),
-        backgroundColor: Colors.green,
-      ),
-    );
-  }
-
-  void _deleteMeal(String day, String mealType) {
-    setState(() {
-      weeklySchedule[day]![mealType] = null;
-    });
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Comida eliminada de $day'),
-        backgroundColor: Colors.orange,
-      ),
-    );
-  }
-
-  void _toggleMealCompletion(String day, String mealType) {
-    setState(() {
-      MealPlan? meal = weeklySchedule[day]![mealType];
-      if (meal != null) {
-        meal.isCompleted = !meal.isCompleted;
-      }
-    });
-  }
-
-  void _startCooking(MealPlan meal) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Row(
-          children: [
-            const Icon(Icons.restaurant, color: Colors.orange),
-            const SizedBox(width: 8),
-            Text('Cocinar ${meal.name}'),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Ingredientes necesarios:',
-              style: TextStyle(fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8),
-            ...meal.ingredients.map((ingredient) => 
-              Padding(
-                padding: const EdgeInsets.only(bottom: 4),
-                child: Row(
-                  children: [
-                    const Icon(Icons.check_circle_outline, size: 16, color: Colors.green),
-                    const SizedBox(width: 8),
-                    Text(ingredient),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.blue[50],
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: const Row(
+      builder: (context) {
+        return StatefulBuilder(builder: (context, setStateDialog) {
+          return AlertDialog(
+            title: Text(existingMeal == null ? 'Agregar Comida' : 'Editar Comida'),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(Icons.info, color: Colors.blue),
-                  SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      '¡Es hora de cocinar! Asegúrate de tener todos los ingredientes listos.',
-                      style: TextStyle(fontSize: 12),
-                    ),
+                  TextField(
+                    controller: nameController,
+                    decoration: const InputDecoration(labelText: 'Nombre de la comida'),
+                  ),
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<String>(
+                    value: selectedMealType,
+                    decoration: const InputDecoration(labelText: 'Tipo de comida'),
+                    items: mealTypes
+                        .map((e) => DropdownMenuItem(value: e, child: Text(e)))
+                        .toList(),
+                    onChanged: (val) {
+                      if (val != null) setStateDialog(() => selectedMealType = val);
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: timeController,
+                    decoration: const InputDecoration(labelText: 'Hora (HH:mm)'),
+                  ),
+                  const SizedBox(height: 12),
+                  Wrap(
+                    spacing: 4,
+                    runSpacing: 4,
+                    children: ingredients
+                        .map((ing) => Chip(
+                              label: Text(ing),
+                              onDeleted: () => setStateDialog(() => ingredients.remove(ing)),
+                            ))
+                        .toList(),
+                  ),
+                  const SizedBox(height: 4),
+                  OutlinedButton(
+                    onPressed: () async {
+                      final ingredient = await _showAddIngredientDialog();
+                      if (ingredient != null && ingredient.isNotEmpty) {
+                        setStateDialog(() => ingredients.add(ingredient));
+                      }
+                    },
+                    child: const Text('Agregar Ingrediente'),
                   ),
                 ],
               ),
             ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancelar'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text('¡Disfruta cocinando ${meal.name}!'),
-                  backgroundColor: Colors.green,
+            actions: [
+              if (existingMeal != null)
+                TextButton(
+                  onPressed: () => _deleteMeal(day, selectedMealType, existingMeal.id),
+                  child: const Text('Eliminar', style: TextStyle(color: Colors.red)),
                 ),
-              );
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.orange,
-              foregroundColor: Colors.white,
-            ),
-            child: const Text('¡Empezar a cocinar!'),
-          ),
+              TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')),
+              ElevatedButton(
+                onPressed: () => _saveMeal(day, selectedMealType, nameController.text, timeController.text, ingredients, existingMeal?.id),
+                child: Text(existingMeal == null ? 'Agregar' : 'Guardar'),
+              ),
+            ],
+          );
+        });
+      },
+    );
+  }
+
+  Future<String?> _showAddIngredientDialog() async {
+    final controller = TextEditingController();
+    return showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Nuevo ingrediente'),
+        content: TextField(controller: controller),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')),
+          ElevatedButton(onPressed: () => Navigator.pop(context, controller.text), child: const Text('Agregar')),
         ],
       ),
     );
   }
-}
 
-class MealPlan {
-  String name;
-  String time;
-  List<String> ingredients;
-  bool isCompleted;
+  Future<void> _saveMeal(String day, String mealType, String name, String time, List<String> ingredients, String? mealId) async {
+    if (userId == null) return;
+    final mealPlan = MealPlan(
+      id: mealId ?? '',
+      day: day,
+      mealType: mealType,
+      name: name,
+      time: time,
+      ingredients: ingredients,
+      isCompleted: false,
+      notificationEnabled: true,
+    );
 
-  MealPlan({
-    required this.name,
-    required this.time,
-    required this.ingredients,
-    required this.isCompleted,
-  });
+    setState(() {
+      weeklySchedule[day]![mealType] = mealPlan;
+    });
+
+    try {
+      await ApiService.saveMealPlan(userId!, mealPlan);
+      if (mealPlan.notificationEnabled) {
+        final id = NotificationService.generateNotificationId(day, mealType);
+        await NotificationService().scheduleMealNotification(
+          id: id,
+          mealType: mealType,
+          mealName: name,
+          day: day,
+          time: time,
+        );
+      }
+      Navigator.pop(context);
+    } catch (e) {
+      print('Error guardando mealPlan: $e');
+    }
+  }
+
+  Future<void> _deleteMeal(String day, String mealType, String mealId) async {
+    if (userId == null) return;
+    setState(() {
+      weeklySchedule[day]![mealType] = null;
+    });
+    try {
+      await ApiService.deleteMealPlan(userId!, day);
+      final notificationId = NotificationService.generateNotificationId(day, mealType);
+      await NotificationService().cancelNotification(notificationId);
+      Navigator.pop(context);
+    } catch (e) {
+      print('Error eliminando mealPlan: $e');
+    }
+  }
+
+  void _toggleMealCompletion(String day, String mealType) {
+    final meal = weeklySchedule[day]![mealType];
+    if (meal == null) return;
+    setState(() {
+      meal.isCompleted = !meal.isCompleted;
+    });
+    _saveMeal(day, mealType, meal.name, meal.time, meal.ingredients, meal.id);
+  }
+
+  void _startCooking(MealPlan meal) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('¡Hora de cocinar ${meal.name}!')));
+  }
 }

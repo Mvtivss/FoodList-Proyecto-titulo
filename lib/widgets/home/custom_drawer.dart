@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_application_1/screens/kitche_inventory_screen.dart';
+import 'package:flutter_application_1/screens/kitchen_inventory_screen.dart';
 import 'package:flutter_application_1/screens/profile_screen.dart';
 import 'package:flutter_application_1/screens/schedule_screen.dart';
 import 'package:flutter_application_1/screens/your_recipe_screen.dart';
